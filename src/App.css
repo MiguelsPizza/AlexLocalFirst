@@ -1,0 +1,47 @@
+.app-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  }
+  .actions-container {
+  margin-bottom: 20px;
+  }
+  .action-button {
+  margin-right: 10px;
+  padding: 10px 20px;
+  font-size: 16px;
+  }
+  .search-container {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+  }
+  .search-input {
+  padding: 10px;
+  font-size: 16px;
+  margin-right: 10px;
+  }
+  .search-button {
+  padding: 10px 20px;
+  font-size: 16px;
+  }
+  .output-container {
+  margin-bottom: 20px;
+  }
+  .file-item,
+  .directory-item {
+  margin-bottom: 10px;
+  }
+  .directory-content {
+  margin-left: 20px;
+  }
+  .search-results-container {
+  margin-top: 20px;
+  }
+  .search-result-item {
+  margin-bottom: 20px;
+  }
+  .search-result-similarity {
+  font-weight: bold;
+  }
