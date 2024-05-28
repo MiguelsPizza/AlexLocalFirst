@@ -1,18 +1,12 @@
 
 
-import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist/build/pdf.mjs';
+// import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist/build/pdf.mjs';
 import { EmbeddingPipelineSingleton, VectorDbSingleton } from './singletons'
-GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url,
-).toString();
-
+import { extract_text_from_binary } from './pkg/pdfToTextWasm.js';
 import { Queue } from 'async-await-queue';
 
 
 const transactionQueue = new Queue(1, 0);
-
-
 
 const extractor = await EmbeddingPipelineSingleton.getInstance();
 const vectorStore = await VectorDbSingleton.getInstance();
@@ -39,32 +33,22 @@ export const TEXT_FILE_EXTENSIONS = new Set<string>([
 async function extractTextFromPdf(pdfFile: File, timeoutMs = 30000) {
   try {
     const pdfBuffer = await pdfFile.arrayBuffer();
-
-    const pdfPromise = getDocument(pdfBuffer).promise;
+    const text = extract_text_from_binary(new Uint8Array(pdfBuffer));
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => reject(new Error('PDF conversion timed out')), timeoutMs);
     });
 
-    const pdf = await Promise.race([pdfPromise, timeoutPromise]);
-    let text = '';
-
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent() as any;
-      text += content.items.map((item) => item.str).join(' ');
-    }
-
-    await vectorConversion(text);
+    const pdf: string = await Promise.race([text, timeoutPromise]) as string;
+    await vectorConversion(pdf, pdfFile.name, 'pdf');
   } catch (err) {
     console.error(`Error reading file: ${pdfFile.name}`, err);
     throw err;
   }
 }
 
-async function vectorConversion(textContent: string) {
+async function vectorConversion(textContent: string, fileName: string, fileType: string) {
   try {
     const chunks = textContent.match(/[\s\S]{1,1000}/g) || [];
-    const results: any[] = [];
 
     for await (const chunk of chunks) {
       const taskId = Symbol();
@@ -72,9 +56,7 @@ async function vectorConversion(textContent: string) {
       try {
         const output = await extractor(chunk, { pooling: 'mean', normalize: true });
         const embedding = new Float64Array(output.data);
-        console.log('inserting', chunk, embedding)
-        const res = await vectorStore.insert(chunk, embedding);
-        results.push(res);
+        await vectorStore.insert(chunk, embedding, [fileName, fileType]);
       } catch (error) {
         console.error('An error occurred during vector conversion:', error);
         throw error;
@@ -82,8 +64,6 @@ async function vectorConversion(textContent: string) {
         transactionQueue.end(taskId);
       }
     }
-
-    return results;
   } catch (error) {
     console.error('An error occurred during vector conversion:', error);
     throw error;
@@ -100,7 +80,7 @@ export const processFile = async (
   switch (fileExtension) {
     case 'pdf':
       try {
-        await extractTextFromPdf(file);
+        // await extractTextFromPdf(file);
       } catch (err) {
         console.error(`Error reading file: ${file.name}`, err);
       }
@@ -108,7 +88,7 @@ export const processFile = async (
     case 'txt':
       try {
         const textContent = await file.text();
-        await vectorConversion(textContent);
+        await vectorConversion(textContent, file.name, 'txt');
       } catch (err) {
         console.error(`Error reading file: ${file.name}`, err);
       }
@@ -151,7 +131,7 @@ export const getFiles = async (
       console.error(`Error reading entry: ${entry.name}`, err);
     }
   }
-  console.log({ dirs, files});
+  console.log({ dirs, files });
 
   const temp = [
     ...(await Promise.all(dirs)).flat(),

@@ -1,17 +1,10 @@
 use wasm_bindgen::prelude::*;
-use pdf_extract::extract_text;
+use pdf_extract::extract_text_from_mem;
 
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+#[wasm_bindgen]
+pub fn extract_text_from_binary(pdf_data: &[u8]) -> String {
+    match extract_text_from_mem(pdf_data) {
+        Ok(text) => text,
+        Err(e) => format!("Error: {:?}", e),
     }
 }

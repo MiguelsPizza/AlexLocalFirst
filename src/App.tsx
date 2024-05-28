@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { FileExt, FileOrDirectory, openDirectory } from './workWithFileSystem';
-import {EmbeddingPipelineSingleton, VectorDbSingleton } from './singletons';
+import { EmbeddingPipelineSingleton, VectorDbSingleton } from './singletons';
 import './App.css';
 
 const extractor = await EmbeddingPipelineSingleton.getInstance();
@@ -12,10 +12,22 @@ const uniqueId = () => {
   return dateString + randomness;
 };
 
+// type DirectoryObject = {
+//   directoryHandle: FileSystemDirectoryHandle;
+//   fileExtension: string;
+//   handle: FileSystemFileHandle;
+//   webkitRelativePath: string;
+// };
+
+
 function App() {
   const [output, setOutput] = useState<(FileExt | FileOrDirectory)[]>([]);
   const searchTermRef = useRef<HTMLInputElement | null>(null);
   const [searchResults, setSearchResults] = useState<(string | File | undefined)[]>([]);
+  const [tags, setTags] = useState<{
+    fileName: string;
+    fileType: ('pdf' | 'txt')[] | null;
+  }>({ fileName: '', fileType: null });
 
   const handleButtonClick = async () => {
     const out = await openDirectory();
@@ -23,15 +35,14 @@ function App() {
     setOutput(out);
   };
 
-  const handleVectorizeandSave = async () => {
-    const content = "My content!";
-    const tags = ["these", "are", "tags"];
-    const data = await extractor(content, { pooling: 'mean', normalize: true });
-    const embedding = new Float64Array(data.data);
-    console.log({ embedding })
-    await vectorStore.insert(content, embedding, tags);
-    const result = await vectorStore.search(embedding, undefined,1000);
-    console.log(result);
+  const handleTagChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setTags((prevTags) => {
+      return {
+        ...prevTags,
+        [name]: value,
+      };
+    });
   }
 
   const handleSearch = async () => {
@@ -43,8 +54,9 @@ function App() {
       const searchValue: string = searchTermRef?.current?.value;
       const output = await extractor(searchValue, { pooling: 'mean', normalize: true });
       const outputData = new Float64Array(output.data);
-      console.log({ searchValue })
-      const result = await vectorStore.search(outputData, undefined, 1000);
+      const tagArr = Object.values(tags).flat().filter(Boolean)
+      console.log({ tagArr });
+      const result = await vectorStore.search(outputData, tagArr.length ? tagArr : undefined, 1000);
       console.log({ result });
       setSearchResults(result);
     } catch (err) {
@@ -58,65 +70,84 @@ function App() {
 
 
   return (
-    <div className="app-container">
-    <div className="actions-container">
-      <button className="action-button" onClick={handleButtonClick}>
-        Open Directory
-      </button>
-      <button className="action-button" onClick={handleVectorizeandSave}>
-        Vectorize and Save
-      </button>
-      <button className="action-button" onClick={handleClear}>
-        Clear
-      </button>
-    </div>
-    <div className="search-container">
-      <input
-        className="search-input"
-        ref={searchTermRef}
-        type="text"
-        placeholder="Search..."
-      />
-      <button className="search-button" onClick={handleSearch}>
-        Search
-      </button>
-    </div>
-    <div className="output-container">
-      <h2>Files and Directories:</h2>
-      {output.map((fileOrDir) => {
-        if (fileOrDir instanceof File) {
+    <div id='herroword' className="app-container">
+      <div className="actions-container">
+        <button className="action-button" onClick={handleButtonClick}>
+          Open Directory
+        </button>
+        <div className="tag-container">
+          <input
+            className="tag-input"
+            type="text"
+            name="fileName"
+            placeholder="File Name"
+            onChange={handleTagChange}
+          />
+          <select
+            title='fileType'
+            className="tag-select"
+            name="fileType"
+            onChange={handleTagChange}
+          >
+            <option value="pdf">PDF</option>
+            <option value="txt">TXT</option>
+          </select>
+        </div>
+        <button className="action-button" onClick={handleClear}>
+          Clear
+        </button>
+      </div>
+      <div className="search-container">
+        <input
+          className="search-input"
+          ref={searchTermRef}
+          type="text"
+          placeholder="Search..."
+        />
+        <button className="search-button" onClick={handleSearch}>
+          Search
+        </button>
+      </div>
+      <div className="output-container">
+        <h2>Files and Directories:</h2>
+        {output.map((fileOrDir) => {
+          if (fileOrDir['fileExtension']) {
+            return (
+              <div key={uniqueId()} className="file-item" onClick={async () => {
+                const handle = fileOrDir.handle as FileSystemFileHandle;
+                const file = await handle.getFile()
+                window.open(URL.createObjectURL(file), '_blank')
+              }}>
+                {fileOrDir.handle.name}
+              </div>
+            );
+          } else {
+            return (
+              <div key={uniqueId()} className="directory-item">
+                {Object.keys(fileOrDir).map((data: any) => {
+                  return (
+                    <div key={uniqueId()} className="directory-content">
+                      {data.text}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          }
+        })}
+      </div>
+      <div className="search-results-container">
+        <h2>Search Results:</h2>
+        {searchResults.map((result: any) => {
           return (
-            <div key={uniqueId()} className="file-item">
-              {fileOrDir.name}
+            <div key={uniqueId()} className="search-result-item">
+              <div className="search-result-similarity">{result.similarity}</div>
+              <div className="search-result-content">{result.content}</div>
             </div>
           );
-        } else {
-          return (
-            <div key={uniqueId()} className="directory-item">
-              {Object.keys(fileOrDir).map((data: any) => {
-                return (
-                  <div key={uniqueId()} className="directory-content">
-                    {data.text}
-                  </div>
-                );
-              })}
-            </div>
-          );
-        }
-      })}
+        })}
+      </div>
     </div>
-    <div className="search-results-container">
-      <h2>Search Results:</h2>
-      {searchResults.map((result: any) => {
-        return (
-          <div key={uniqueId()} className="search-result-item">
-            <div className="search-result-similarity">{result.similarity}</div>
-            <div className="search-result-content">{result.content}</div>
-          </div>
-        );
-      })}
-    </div>
-  </div>
   );
 }
 
